@@ -1,0 +1,19 @@
+# Phase 1: Coordinate Parsing
+biopython
+MDAnalysis
+
+# Phase 2 & 3: Math, Geometry, and Optimal Transport
+numpy
+pandas
+scipy
+POT  # Python Optimal Transport (for Earth Mover's Distance)
+numba # For optimizing Dynamic Time Warping
+fastdtw # Alternative for DTW
+
+# Phase 4: Statistics
+scikit-posthocs # For Nemenyi Post-Hoc tests
+
+# Visualization
+matplotlib
+seaborn
+jupyter
