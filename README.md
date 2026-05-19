@@ -1,46 +1,35 @@
-# Final Project Pipeline: Multiscale Topological, Sequential & Quaternary Assessment of AlphaFold 2 Predictions
+# The Project Pipeline: Multiscale Topological, Sequential & Quaternary Assessment of AlphaFold 2 Predictions
 
 ## Phase 1: Data Acquisition, Geometric Parsing & Synchronization
 
 **The goal is to translate 3D Cartesian coordinates into raw, perfectly aligned, and heavily parameterized topological data.**
 
-* **Target Selection:** Curate a dataset of roughly 7,500 proteins that have experimentally resolved structures in the Protein Data Bank (PDB) alongside predictions from AlphaFold 2 (AF2).
+* **Data Acquisition & Target Selection:** Curate a dataset of roughly 8050 proteins that have experimentally resolved structures in the Protein Data Bank (PDB) alongside predictions from AlphaFold 2 (AF2). Concurrently fetch all auxiliary files required for downstream phases, including the AlphaFold PAE JSONs.
 * **Coordinate Parsing:** Parse the coordinate files to isolate the $C_{\alpha}$ atom coordinates.
 * **Mathematical Sequence Synchronization:** Strictly map the experimental PDB sequence to the full AlphaFold sequence using an alignment algorithm, padding missing unresolved PDB indices with null values to maintain perfect spatial-sequential alignment.
-* **Multiscale & Long-Range Arity Calculation:** Calculate both standard local arity and long-range arity for each $C_{\alpha}$ atom. Formally, let the arity of a $C_{\alpha}$ carbon be the number of neighboring $C_{\alpha}$ atoms within a distance range $r$. Assuming the polypeptide chain has $n$ amino acids, define $L_{a}=\{a_{1},...,a_{n}\}$ as the arities of the $n$ $C_{\alpha}$ carbons. Define long-range arity by isolating residues separated by a sequence distance of $|i-j| > k$ that fall within a spatial radius of $d \le r$. Apply distance-decay weights to these connections to capture nuanced packing density rather than binary thresholds.
-* **Data Structuring:** Save the sequence of arity values as a synchronized 1D spatial time-series array, parameterized across multiple values of $k$ (sequence separation) and $r$ (spatial radius).
+* **Multiscale & Long-Range Arity Calculation:** Calculate both standard local arity and long-range arity for each $C_{\alpha}$ atom. Formally, let the arity of a $C_{\alpha}$ carbon be the number of neighboring $C_{\alpha}$ atoms within a distance range $r$. Assuming the polypeptide chain has $n$ amino acids, define $L_{a}=\{a_{1},...,a_{n}\}$ as the arities of the $n$ $C_{\alpha}$ carbons. Define long-range arity by isolating residues separated by a sequence distance of $|i-j| > k$ that fall within a spatial radius of $d \le r$. Apply distance-decay kernel weights to these connections to capture nuanced packing density alongside unweighted binary thresholds.
+* **Data Structuring:** Instead of a monolithic matrix, save the sequence of arity values as independent, synchronized 1D spatial time-series arrays. Each array is uniquely parameterized across multiple pairs of sequence separation ($k$) and spatial radius ($r$), generating separate files for both weighted and unweighted calculations.
 
 ---
 
 ## Phase 2: Topological Signatures, Mapping & Local Filtration
 
-**The goal is to extract geometric baselines, expanding the distribution metrics and introducing local topological smoothing.**
+**The goal is to extract geometric baselines, expanding the distribution metrics and introducing local topological smoothing to distinguish ordered from disordered regions.**
 
-* **Expanded Distribution Generation:** Compute the normalized arity histogram and use an expanded Cumulative Distribution Function (CDF) suite. Let $L=[A_{1},...,A_{m}]$ be the unique arities sorted by increasing value. The number of $C_{\alpha}$ with a given arity defines the histogram $H_{C_{\alpha}}$. We define the $C_{\alpha}$ Arity Signature for a list of increasing percentiles $P_{K}=\{p_{1},...,p_{K}\}$ (e.g., 10th, 25th, 50th, 75th, 90th) as the smallest arity such that the CDF is larger than $p_{k}$:
+* **Expanded Distribution Generation:** Compute the normalized arity histogram and use an expanded Cumulative Distribution Function (CDF) suite. Let $L=[A_{1},...,A_{m}]$ be the unique arities sorted by increasing value. We define the $C_{\alpha}$ Arity Signature for a suite of specific percentiles $P_{K}=\{10th, 25th, 50th, 75th, 90th\}$ as the smallest arity such that the CDF is larger than $p_{k}$:
 
 $$arity\_C_{\alpha}(p_{k}) = CDF_{C_{\alpha}}^{-1}(p_{k}) \equiv \arg\min_{j} (CDF_{C_{\alpha}}(A_{j}) \ge p_{k})$$
 
 
-* **Sliding Window Locality (1D Signal Smoothing):** Apply a moving average (or Savitzky-Golay filter) of window size $w=2k+1$ across the synchronized 1D sequence arrays. Mathematically, the smoothed arity at residue $i$ is:
-
-$$S_i = \frac{1}{w} \sum_{j=i-k}^{i+k} a_j$$
-
-
-
-This low pass filter neutralizes local geometric noise (e.g., solvent-exposed surface residues) to reveal macro-structures. Biologically, sustained high-arity plateaus map to rigid domains, while deep topological troughs isolate flexible linkers. It serves as the foundational input for the DTW alignment in Phase 3 to validate predicted boundaries against experimental reality.
-* **Global Arity Mapping:** Plot the 25th and 75th percentiles to create the 2-number signature on a Global Arity Map. Given two quantiles $q_{1}=0.25$ and $q_{2}=0.75$, the arity map is the map whose $x$ and $y$ axes are the arities $arity\_C_{\alpha}(q_{1})$ and $arity\_C_{\alpha}(q_{2})$, specifically identifying regions associated with disorder and potential hallucinations.
-* **Arity Filtration:** Sort the $C_{\alpha}$ atoms by increasing arity and run the Union-Find algorithm on this sorted sequence to track connected components. Using a filtration $\mathcal{G}_{u}$ encoding a sequence of nested subgraphs, let $N_{cc}(u)$ represent the number of connected components at each value of $u$. Extract the following topological quantifications:
-* **Persistence Entropy:** Assuming persistences belong to a discrete set $\mathcal{P}$ with probability mass function $\mathbb{P}:\mathcal{P}\rightarrow[0,1]$, the normalized persistence entropy is:
-
-$$H_{\mathfrak{p}}=-\sum_{p_{i}\in\mathcal{P}}\mathbb{P}[p_{i}]\log\mathbb{P}[p_{i}]/\log|\mathcal{P}|$$
+* **Signature Distance ($D_{sig}$):** Systematically evaluate hyperparameter configurations $(r, k, W)$ by calculating the Euclidean distance between AF2 and PDB signatures in 2D and 3D space. The configuration minimizing the mean $D_{sig}$ across the dataset optimally captures the experimental packing geometry.
+* **Global Arity Mapping (2D & 3D):** Plot the 25th and 75th percentiles to create discrete 2D histograms and 3D scatter topologies. At this global level, proteins physically cluster based on their macroscopic packing density: rigid globular folds inherently congregate in the high-arity top-right region, while Intrinsically Disordered Proteins (IDPs) isolate themselves in the low-arity bottom-left region.
+* **Sliding Window Locality (1D Signal Smoothing):** Apply a moving average filter across the synchronized 1D sequence arrays. The filter begins sliding dynamically based on the sequence gap $k$. We utilize varied window sizes ($W \in \{5, 11, 15, 25, 31\}$) that directly map to physical protein hierarchy:
+* $W=5$: Captures local secondary structure ($\alpha$-helices and $\beta$-strands).
+* $W=11 \text{ to } 15$: Targets super-secondary motifs.
+* $W=25 \text{ to } 31$: Acts as a heavy low-pass filter ideal for isolating macro-domains.
 
 
-* **Mean Persistence:** For critical points $c_{i}$, the mean persistence is $\overline{p}=\sum_{i=1}^{m}p_{\mathcal{G}}(c_{i})/m$, where $p_{\mathcal{G}}(c_{i})=death_{\mathcal{G}}(c_{i})-birth_{\mathcal{G}}(c_{i})$.
-* **Fraction of Positive Critical points:** $f_{cp}^{+}=m^{\prime}/n$.
-* **Maximum number of connected components:** $N_{cc}^{max}=\max_{u}N_{cc}(u)$.
-* **Persistent Local Maxima:** Denoted as $PLM(t_{\nu})$, representing the number of persistent local maxima of the function $N_{cc}(u)$ at persistence threshold $t_{\nu}$.
-
-
+* **Arity Filtration:** Sort the $C_{\alpha}$ atoms by increasing arity and run the Union-Find algorithm to track connected components. Extract topological quantifications such as Persistence Entropy ($H_{\mathfrak{p}}$), Mean Persistence ($\overline{p}$), Fraction of Positive Critical points ($f_{cp}^{+}$), Maximum number of connected components ($N_{cc}^{max}$), and Persistent Local Maxima ($PLM(t_{\nu})$).
 
 ---
 
@@ -48,32 +37,22 @@ $$H_{\mathfrak{p}}=-\sum_{p_{i}\in\mathcal{P}}\mathbb{P}[p_{i}]\log\mathbb{P}[p_
 
 **The goal is to physically validate spatial arrangements using combined metrics and efficient mathematical formulations.**
 
-* **Global Packing Similarity (1D EMD):** Use the Earth Mover’s Distance (EMD) to compare the full CDFs between AF2 and PDB models. Exploit the 1D optimal transport formulation for CDFs, which offers a highly efficient, closed-form exact solution. The distance is calculated as the exact "work" required to match the distributions:
+* **Global Packing Similarity (1D EMD):** Use the Earth Mover’s Distance (EMD) to compare the full CDFs between AF2 and PDB models:
 
 $$EMD(PDB, AF2) = \int_{0}^{\infty} |CDF_{PDB}(x) - CDF_{AF2}(x)| \, dx$$
 
 
-* **Multivariate Spatial Motif Alignment (DTW):** Deploy Dynamic Time Warping on the synchronized 1D arrays, combining the arity signal and the pLDDT confidence score into a single multivariate metric. This aligns physical sequence motifs weighted by AlphaFold's structural confidence. A common way to write this is to convert pLDDT into an uncertainty weight $w_j \in [1, \text{Max Penalty}]$, where high pLDDT approaches 1, and low pLDDT acts as a multiplier:
+* **Multivariate Spatial Motif Alignment (DTW):** Deploy Numba-accelerated Dynamic Time Warping on the smoothed macro-topology arrays. To handle unresolved PDB coordinates, missing sequence blocks are uniformly excised from both 1D arrays prior to alignment. The cost matrix incorporates a penalty multiplier ($\gamma = 2.0$) driven by AlphaFold's pLDDT:
 
-$$Cost(i, j) = \left( 1 + \gamma \frac{100 - pLDDT_{AF2, j}}{100} \right) \cdot (Arity_{PDB, i} - Arity_{AF2, j})^2$$
-
-
-* If $pLDDT = 100$: The fraction becomes 0. The cost is exactly the squared arity difference. (Pure structural alignment).
-* If $pLDDT = 20$: The fraction is $0.8$. The structural error is multiplied by $(1 + 0.8\gamma)$, making it heavily penalized to align anything to this junk region unless the arity is an absolutely perfect match (like aligning an IDP to an IDP).
+$$Cost(i, j) = \left(1 + \gamma \frac{100 - pLDDT_{AF2, j}}{100}\right) (Arity_{PDB, i} - Arity_{AF2, j})^2$$
 
 
-* **Hallucination Flagging:** Use AlphaFold's cross-domain Predicted Aligned Error (PAE) to flag models with low DTW error (perfect local folding) but high cross-domain PAE (uncertain quaternary orientation). The pipeline triggers a hallucination flag under the following conditions:
+* **Hallucination Flagging:** Trigger a hallucination flag indicating a perfectly folded local domain with an entirely unphysical quaternary orientation:
 
-$$(\text{DTW Error} < \text{Threshold}) \land (\text{Cross-Domain PAE} > \text{Threshold})$$
-
-
-* **Quaternary Physical Validation:** Validate flagged hallucinations by calculating the rigid-body angle between the centers of mass of the distinct domains in the AF2 model, benchmarking it directly against the ground-truth angle derived from the experimental PDB coordinates. The Center of Mass (CoM) for a domain (e.g., Domain A) is:
-
-$$C_A = \frac{1}{N_A} \sum_{i=1}^{N_A} \vec{r}_i$$
+$$(\text{DTW Error} < 10.0) \land (\text{Cross-Domain PAE} > 15.0 \text{ \AA})$$
 
 
-
-Using a hinge point $H$, we define the domain vectors $\vec{v}_A = C_A - H$ and $\vec{v}_B = C_B - H$. The macroscopic fold angle $\theta$ is then computed via the dot product:
+* **Topological Hinge Detection & Quaternary Validation:** Validate flagged hallucinations by determining the rigid-body angle between AF2 domains versus experimental reality. Rather than arbitrary sequence cutoffs, deploy rigorous 1D Signal Processing on the smoothed inverted arity array to locate the topological saddle point. Extract the specific sequence index demonstrating a Topological Prominence $\ge 2.0$, mirroring the persistent local maxima threshold ($T_{\nu}$) from Phase 2. Using this hinge point $H$, compute the macroscopic fold angle via the dot product of domain vectors:
 
 $$\theta = \arccos \left( \frac{\vec{v}_A \cdot \vec{v}_B}{|\vec{v}_A| |\vec{v}_B|} \right)$$
 
@@ -81,12 +60,10 @@ $$\theta = \arccos \left( \frac{\vec{v}_A \cdot \vec{v}_B}{|\vec{v}_A| |\vec{v}_
 
 ---
 
-## Phase 4: Multiscale Cluster Trees & Statistical Benchmarking
+## Phase 4: Statistical Benchmarking & The Ablation Study
 
 **The goal is to map the stability of protein families across spatial parameters and rigorously validate the findings.**
 
-* **Multiscale Cluster Trees:** Perform hierarchical clustering across the entire $(r, k)$ parameter space. Construct persistence diagrams to track how clusters form, merge, and dissolve as the spatial radius $r$ and sequence gap $k$ increase.
-* **Topological Node Annotation:** Annotate the resulting cluster tree nodes with rich metadata: mean pLDDT, mean arity, Betti numbers ($\beta_0$ for connected components, $\beta_1$ for cycles/loops), cluster purity, and the dominant biological family.
-* **Statistical Benchmarking (Paired Topological Metrics):** Group the Filtration and Signature metrics into paired sets (AF2 vs. PDB). Apply non-parametric paired tests (e.g., Wilcoxon signed-rank), pairing every adjusted $p$-value with an Effect Size metric (like Cliff’s Delta) to systematically quantify AlphaFold's topological deviations from experimental reality.
-* **Statistical Benchmarking (Distance Metrics):** Apply independent non-parametric tests (e.g., Mann-Whitney U test) to the EMD and DTW error distributions to compare alignment accuracy across distinct structural classifications. Utilize the geometric clusters organically identified in Phase 2 (e.g., isolating proteins from the low-arity IDP cluster versus the high-arity globular cluster on the Global Arity Map) to statistically determine if AlphaFold's predictive error is systematically higher in intrinsically disordered regions compared to rigid domains.
-* **Methodological Ablation Study:** Systematically test whether the addition of multiscale long-range arity yields statistically superior structural classification compared to standard local arity. To perform this, isolate a target performance metric (e.g., DTW alignment error or hierarchical cluster purity) and create paired sets for the entire dataset: one value computed using purely local arity, and one using long-range arity. Apply the Wilcoxon signed-rank test to these pairs to determine if long-range parameters systematically improve performance, and use Cliff's Delta to quantify the magnitude of this information gain.
+* **Algorithmic IDP Definition (K-Means Clustering):** Deploy an unsupervised K-means clustering algorithm ($K=2$) strictly on the 2D Arity Signatures ($p_{25}, p_{75}$) identified in Phase 2. The cluster bounded by the lowest coordinates mathematically isolates Intrinsically Disordered Proteins (IDPs) without reliance on external biological labels, while the higher coordinate cluster isolates rigid globular folds.
+* **Evaluating Structural Performance (Mann-Whitney U):** Merge the Phase 3 validation outputs with the Phase 4 cluster labels. Apply the Mann-Whitney U test to the DTW Error and EMD distributions to statistically determine if AlphaFold's topological error is systematically and significantly higher in the mathematical IDP cluster compared to the globular cluster.
+* **The Multiscale Ablation Study (Wilcoxon Signed-Rank):** Systematically prove that long-range, weighted multiscale parameters surpass the current standard literature methodology. Establish paired sets comparing a control framework (Standard Arity: $k=0$, unweighted) against the novel framework (Long-Range Arity: $k > 0$, distance-weighted). Utilize the Wilcoxon signed-rank test on matched performance metrics (e.g., $D_{sig}$ and DTW Error) to quantify the statistical significance of this topological enhancement.
