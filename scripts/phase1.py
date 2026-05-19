@@ -149,7 +149,7 @@ def compute_1d_arities(coordis, r_values, k_values):
             valid_mask = (D<=r) & (S>k) & ~np.isnan(D)
             unweighted_arity = np.sum(valid_mask, axis=1).astype(float)
             
-            weights = np.clip(1.0 - (D/r), 0, None) 
+            weights = np.exp(-((D / r) ** 2))
             weighted_arity = np.nansum(weights * valid_mask, axis=1) 
             
             unweighted_arity[nan_mask] = np.nan
