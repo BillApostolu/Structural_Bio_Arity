@@ -16,7 +16,7 @@ PAE_THRESH = 15.0
 PLDDT_THRESH = 70.0 # minimum mean confidence for the domain to be flagged as a confident error
 WINDOWS = [1, 5, 11, 15, 25, 31]
 
-@jit(nopython=True) # this justs makes the script faster for DTW runs
+@jit(nopython=True) # this just makes the script faster for DTW runs
 def compute_dtw_cost_matrix(arity_pdb, arity_af2, plddt_af2):
     n,m = len(arity_pdb), len(arity_af2)
     cost_matrix = np.zeros((n,m))
@@ -96,24 +96,43 @@ for folder in param_folders:
             print(f"Process DTW alignment for {folder_name} | {weight_type} | W={w}")
             files = glob.glob(os.path.join(directory,"*_AF2.npy"))
             results = []
-            
+            n_skipped, n_no_pae = 0, 0
+
             for af2_file in files:
                 filename = os.path.basename(af2_file)
                 uniprot_id = filename.replace('_AF2.npy', '')
                 pdb_file = os.path.join(directory, f"{uniprot_id}_PDB.npy")
-                    
+                af2_coords_file = os.path.join(CORE_DATA_DIR, f"{uniprot_id}_AF2_coords.npy")
+                pdb_coords_file = os.path.join(CORE_DATA_DIR, f"{uniprot_id}_PDB_coords.npy")
+                plddt_file = os.path.join(CORE_DATA_DIR, f"{uniprot_id}_AF2_pLDDT.npy")
+                pae_file = os.path.join(CORE_DATA_DIR, f"{uniprot_id}_AF2_PAE.npy")
+
+                # skip proteins whose Phase 1/2 outputs are incomplete instead of crashing the whole run
+                if not all(os.path.exists(p) for p in (pdb_file, af2_coords_file, pdb_coords_file, plddt_file)):
+                    n_skipped += 1
+                    continue
+
                 # smoothed 1D arities of phase 2
                 arr_af2 = np.load(af2_file)
                 arr_pdb = np.load(pdb_file)
-                
+
                 # 3D Data already downloaded
-                coords_af2 = np.load(os.path.join(CORE_DATA_DIR, f"{uniprot_id}_AF2_coords.npy"))
-                coords_pdb = np.load(os.path.join(CORE_DATA_DIR, f"{uniprot_id}_PDB_coords.npy"))
-                plddt_af2 = np.load(os.path.join(CORE_DATA_DIR, f"{uniprot_id}_AF2_pLDDT.npy"))
-                pae_matrix = np.load(os.path.join(CORE_DATA_DIR, f"{uniprot_id}_AF2_PAE.npy"))
-                    
+                coords_af2 = np.load(af2_coords_file)
+                coords_pdb = np.load(pdb_coords_file)
+                plddt_af2 = np.load(plddt_file)
+
+                # the PAE file is missing when its download failed in Phase 1; such proteins still get
+                # EMD and DTW scores but cannot be flagged (cross-domain PAE is NaN)
+                if os.path.exists(pae_file):
+                    pae_matrix = np.load(pae_file)
+                else:
+                    pae_matrix = None
+                    n_no_pae += 1
+
                 # Synchronize masking by removing missing sequence blocks from both arrays for valid DTW comparison
-                mask = ~np.isnan(arr_pdb) & ~np.isnan(arr_af2)
+                # (the coordinate check also guards against smoothed arrays produced by older Phase 2 runs,
+                # which could hold values at positions without PDB coordinates)
+                mask = ~np.isnan(arr_pdb) & ~np.isnan(arr_af2) & ~np.isnan(coords_pdb[:, 0])
                 valid_af2 = arr_af2[mask]
                 valid_pdb = arr_pdb[mask]
                 valid_coords_af2 = coords_af2[mask]
@@ -131,7 +150,7 @@ for folder in param_folders:
                 dtw_error = compute_dtw_alignment(cost_matrix)
                 
                 # hallucination flagging
-                cross_pae = get_mean_cross_domain_pae(pae_matrix)
+                cross_pae = get_mean_cross_domain_pae(pae_matrix) if pae_matrix is not None else np.nan
                 mean_plddt = np.nanmean(valid_plddt_af2)
                 is_hallucination = False
                 if not np.isnan(cross_pae) and not np.isnan(mean_plddt):
@@ -158,6 +177,9 @@ for folder in param_folders:
                     "PDB_Fold_Angle": angle_pdb,
                     "Angle_Deviation": angle_deviation})
             
+            if n_skipped or n_no_pae:
+                print(f"  {n_skipped} proteins skipped (missing Phase 1/2 files), {n_no_pae} without PAE (not flaggable)")
+
             # save the results per folder/weight/window
             if results:
                 df = pd.DataFrame(results)

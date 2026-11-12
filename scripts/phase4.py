@@ -10,6 +10,7 @@ warnings.filterwarnings("ignore")
 PHASE2_DIR = os.path.join("Data", "phase2_results")
 PHASE3_DIR = os.path.join("Data", "phase3_results")
 PHASE4_OUT_DIR = os.path.join("Data", "phase4_results")
+os.makedirs(PHASE4_OUT_DIR, exist_ok=True)
 
 def cliffs_delta(x, y):
     x, y = np.asarray(x).flatten(), np.asarray(y).flatten()
@@ -22,7 +23,13 @@ def load_merged_data(r, k, w, weight="unweighted"):
     folder_name = f"r_{r}_k_{k}"
     sig_file = os.path.join(PHASE2_DIR, f"Signatures_{folder_name}_{weight}_W{w}.csv")
     val_file = os.path.join(PHASE3_DIR, f"Phase3_Validation_{folder_name}_{weight}_W{w}.csv")
-        
+
+    # return None (instead of crashing) when a configuration was not produced by Phase 2/3,
+    # so the callers' "if df is None" checks can skip it
+    if not (os.path.exists(sig_file) and os.path.exists(val_file)):
+        print(f"  Missing Phase 2/3 results for {folder_name} | {weight} | W={w}, skipping")
+        return None
+
     df_sig_raw = pd.read_csv(sig_file)
     df_sig = df_sig_raw.pivot(index="Protein_ID", columns="Model_Type", 
                               values=['p_10', 'p_25', 'p_50', 'p_75', 'p_90', 'Entropy_Hp', 'Mean_Persistence', 'Fraction_CP', 'Max_CC', 'PLM'])
@@ -40,6 +47,8 @@ def load_merged_data(r, k, w, weight="unweighted"):
 def generate_baseline_reference_modes():
     # Establish baseline biological families using true experimental PDB data (r=10, k=0, W=1)
     df = load_merged_data(10, 0, 1)
+    if df is None:
+        raise FileNotFoundError("The baseline configuration r=10, k=0, W=1 is required; run phase2.py and phase3.py first.")
     features = df[['p_25_PDB', 'p_75_PDB']].dropna()
     
     agg_cluster = AgglomerativeClustering(n_clusters=4, linkage='ward')
@@ -127,8 +136,12 @@ def run_confusion_matrix_analysis(r_val=10, k_values=[0, 1, 2, 5], w_values=[1, 
     for w_val in w_values:
         for k in k_values:
             df = load_merged_data(r_val, k, w_val)
+            if df is None:
+                continue
             df_valid = df[['p_25_PDB', 'p_75_PDB', 'p_25_AF2', 'p_75_AF2']].dropna() # ensures 1:1 comparison
-            
+            if len(df_valid) < 10: # too few proteins to form 4 clusters
+                continue
+
             pdb_features = df_valid[['p_25_PDB', 'p_75_PDB']]
             af2_features = df_valid[['p_25_AF2', 'p_75_AF2']]
             
@@ -182,7 +195,7 @@ def print_summary(res, name):
               f"| Mode 1: {res['DTW_Mode1_Med']:.2f}/{res['EMD_Mode1_Med']:.2f} "
               f"| Mode 2: {res['DTW_Mode2_Med']:.2f}/{res['EMD_Mode2_Med']:.2f} "
               f"| Mode 3: {res['DTW_Mode3_Med']:.2f}/{res['EMD_Mode3_Med']:.2f}")
-    print(f"Flagged Proteins: {res.get('Total_Triad_Hallucinations', 0)}")
+    print(f"Flagged Proteins: {res.get('Total_Hallucinations', 0)}")
     print(f"Mean Angle Deviation: {res.get('Mean_Angle_Dev', np.nan):.1f}°")
 
 if __name__ == "__main__":

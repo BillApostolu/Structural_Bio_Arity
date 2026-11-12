@@ -1,72 +1,187 @@
-# The Project Pipeline: Multiscale Topological, Sequential & Quaternary Assessment of AlphaFold 2 Predictions
+# Structural_Bio_Arity
 
-## Phase 1: Data Acquisition, Geometric Parsing & Synchronization
+**Multiscale, arity-based comparison of AlphaFold 2 predictions with experimental PDB structures**
 
-**The goal is to translate 3D Cartesian coordinates into raw, perfectly aligned, and heavily parameterized topological data.**
+This repository contains the analysis pipeline for *Project 10: AlphaFold understanding it through usage*. It builds on the Cα arity packing signatures of Cazals & Sarti (2024) and extends them with:
 
-* **Data Acquisition & Target Selection:** Curate a dataset of roughly 7,500 proteins that have experimentally resolved structures in the Protein Data Bank (PDB) alongside predictions from AlphaFold 2 (AF2). Concurrently fetch all auxiliary files required for downstream phases, including the AlphaFold PAE JSONs.
-* **Coordinate Parsing:** Parse the coordinate files to isolate the $C_{\alpha}$ atom coordinates.
-* **Mathematical Sequence Synchronization:** Strictly map the experimental PDB sequence to the full AlphaFold sequence using an alignment algorithm, padding missing unresolved PDB indices with null values to maintain perfect spatial-sequential alignment.
-* **Multiscale & Long-Range Arity Calculation:** Calculate both standard local arity and long-range arity for each $C_{\alpha}$ atom. Formally, let the arity of a $C_{\alpha}$ carbon be the number of neighboring $C_{\alpha}$ atoms within a distance range $r$. Assuming the polypeptide chain has $n$ amino acids, define $L_{a}=\{a_{1},...,a_{n}\}$ as the arities of the $n$ $C_{\alpha}$ carbons. Define long-range arity by isolating residues separated by a sequence distance of $|i-j| > k$ that fall within a spatial radius of $d \le r$. Apply distance-decay kernel weights to these connections to capture nuanced packing density alongside unweighted binary thresholds.
-* **Data Structuring:** Instead of a monolithic matrix, save the sequence of arity values as independent, synchronized 1D spatial time-series arrays. Each array is uniquely parameterized across multiple pairs of sequence separation ($k$) and spatial radius ($r$), generating separate files for both weighted and unweighted calculations.
+- a **sequence-gap parameter k**, which ignores contacts between residues that are close in sequence, so that long-range (tertiary) packing can be separated from local secondary structure;
+- **sliding-window smoothing** (window W) of the per-residue arity profile at several structural scales;
+- **1D persistence (union–find filtration)** metrics computed on the arity profile;
+- **per-protein profile errors** between AlphaFold 2 (AF2) and the PDB: Earth Mover's Distance and pLDDT-weighted Dynamic Time Warping;
+- a **flag for uncertain inter-domain orientation** based on AF2's Predicted Aligned Error (PAE), checked against the hinge angle in the experimental structure.
 
----
-
-## Phase 2: Topological Signatures, Mapping & Local Filtration
-
-**The goal is to extract geometric baselines, expanding the distribution metrics and introducing local topological smoothing to distinguish ordered from disordered regions.**
-
-* **Expanded Distribution Generation:** Compute the normalized arity histogram and use an expanded Cumulative Distribution Function (CDF) suite. Let $L=[A_{1},...,A_{m}]$ be the unique arities sorted by increasing value. The number of $C_{\alpha}$ with a given arity defines the histogram $H_{C_{\alpha}}$. We define the $C_{\alpha}$ Arity Signature for a suite of specific percentiles $P_{K}=\{10th, 25th, 50th, 75th, 90th\}$ as the smallest arity such that the CDF is larger than $p_{k}$:
-
-$$arity\_C_{\alpha}(p_{k}) = CDF_{C_{\alpha}}^{-1}(p_{k}) \equiv \arg\min_{j} (CDF_{C_{\alpha}}(A_{j}) \ge p_{k})$$
-
-
-* **Global Arity Mapping (2D & 3D):** Plot the 25th and 75th percentiles to create a 2D Global Arity Map. Extend this to a 3D representation by including the 50th percentile. At this global level, proteins physically cluster based on their macroscopic packing density: rigid globular folds inherently congregate in the high-arity top-right region, while Intrinsically Disordered Proteins (IDPs) isolate themselves in the low-arity bottom-left region.
-* **Sliding Window Locality (1D Signal Smoothing):** Apply a moving average filter across the synchronized 1D sequence arrays. The filter begins sliding dynamically based on the sequence gap $k$. We utilize varied window sizes ($W \in \{5, 11, 15, 25, 31\}$) that directly map to physical protein hierarchy:
-* $W=5$: Captures local secondary structure ($\alpha$-helices and $\beta$-strands).
-* $W=11 \text{ to } 15$: Targets super-secondary motifs.
-* $W=25 \text{ to } 31$: Acts as a heavy low-pass filter ideal for isolating macro-domains.
-
-
-Mathematically, the smoothed arity at residue $i$ is $S_i = \frac{1}{W} \sum_{j} a_j$. At this local level, deep topological troughs isolate Intrinsically Disordered Regions (IDRs), while sustained high-arity plateaus map to rigid domains.
-* **Arity Filtration:** Sort the $C_{\alpha}$ atoms by increasing arity and run the Union-Find algorithm on this sorted sequence to track connected components. Using a filtration $\mathcal{G}_{u}$ encoding a sequence of nested subgraphs, let $N_{cc}(u)$ represent the number of connected components at each value of $u$. Extract topological quantifications such as Persistence Entropy, Mean Persistence, Fraction of Positive Critical points, Maximum number of connected components, and Persistent Local Maxima.
-
-* **Global Map Evaluation (Signature Distance):** To systematically evaluate the vast hyperparameter space $(r, k, W)$ without relying on visual inspection, calculate the Euclidean Signature Distance ($D_{sig}$) between the AF2 and PDB distributions. For a 2D map, this is $D_{sig} = \sqrt{(p_{25, PDB} - p_{25, AF2})^2 + (p_{75, PDB} - p_{75, AF2})^2}$. The parameter pair yielding the lowest mean $D_{sig}$ across the dataset identifies where AF2 most accurately captures global packing density.
+The analysis in the report covers 8,050 human proteins that have both an AF2 model and an experimental structure. The full write-up, figures and discussion are in [`Project10_Report.pdf`](Project10_Report.pdf).
 
 ---
 
-## Phase 3: Advanced Structural Alignment & Quaternary Validation
+## Repository layout
 
-**The goal is to physically validate spatial arrangements using combined metrics and efficient mathematical formulations.**
+```
+.
+├── scripts/
+│   ├── data_acquisition.py   # build the UniProt/PDB pair list, download AF2 models and PDB entries
+│   ├── phase1.py             # parse, align, compute arity profiles, download PAE
+│   ├── phase2.py             # smoothing, arity signatures, persistence metrics
+│   ├── map_generation.py     # 2D/3D global arity maps
+│   ├── phase3.py             # EMD, DTW, inter-domain flag, hinge angles
+│   └── phase4.py             # clustering, statistics, parameter sweeps, ablation
+├── csv_columns.md            # every column of every output CSV
+├── Project10_Report.pdf      # project report
+├── requirements.txt
+└── LICENSE
+```
 
-* **Global Packing Similarity (1D EMD):** Use the Earth Mover’s Distance (EMD) to compare the full CDFs between AF2 and PDB models. The distance is calculated as the exact "work" required to match the distributions:
+All data and results are written to `Data/`, which is created by the scripts and ignored by git.
 
-$$EMD(PDB, AF2) = \int_{0}^{\infty} |CDF_{PDB}(x) - CDF_{AF2}(x)| \, dx$$
+## Installation
 
+Python 3.10 or newer.
 
-* **Multivariate Spatial Motif Alignment (DTW):** Deploy Dynamic Time Warping on the heavily smoothed macrotopology arrays from Phase 2. To handle unresolved PDB coordinates without distorting the alignment, missing sequence blocks are uniformly excised from both the experimental and predicted arrays prior to DTW, evaluating only the shared resolved subsets. The cost matrix incorporates a penalty multiplier $\gamma=2.0$ driven by AlphaFold's pLDDT, mathematically forcing the algorithm to forgive structural deviations in intrinsically disordered regions where AF2's confidence is low.
+```bash
+git clone https://github.com/BillApostolu/Structural_Bio_Arity.git
+cd Structural_Bio_Arity
+python -m venv .venv
+source .venv/bin/activate        # Windows: .venv\Scripts\activate
+pip install -r requirements.txt
+```
 
-$$Cost(i, j) = \left(1 + \gamma \frac{100 - pLDDT_{AF2, j}}{100}\right) (Arity_{PDB, i} - Arity_{AF2, j})^2$$
+## Running the pipeline
 
+The scripts use paths relative to the current directory, so run them **from the repository root**, in this order:
 
-* **Hallucination Flagging:** Use AlphaFold's cross-domain Predicted Aligned Error (PAE) to flag models with low DTW error (perfect local folding) but high cross-domain PAE (uncertain quaternary orientation). The pipeline triggers a hallucination flag under the following conditions:
+| Step | Command | What it does | Main outputs (under `Data/`) |
+|---|---|---|---|
+| 1a | `python scripts/data_acquisition.py` | Builds the UniProt/PDB pair list and downloads AF2 models and PDB entries | `target_proteins.txt`, `raw/AlphaFold2/`, `raw/PDB/` |
+| 1b | `python scripts/phase1.py` | Parsing, sequence alignment, arity profiles, PAE download | `processed_1d_signals_new/`, `mapping_log.csv` |
+| 2 | `python scripts/phase2.py` | Smoothing, arity signatures, persistence metrics | `phase2_results/` |
+| 2b | `python scripts/map_generation.py` | 2D and 3D global arity maps | `phase2_results/maps/` |
+| 3 | `python scripts/phase3.py` | EMD, DTW, inter domain flag, hinge angles | `phase3_results/` |
+| 4 | `python scripts/phase4.py` | Reference modes, statistics, sweeps, ablation, confusion matrices | `phase4_results/` and a console summary |
 
-$$(\text{DTW Error} < \text{Threshold}) \land (\text{Cross-Domain PAE} > \text{Threshold})$$
+Notes:
 
-
-* **Quaternary Physical Validation:** Validate flagged hallucinations by calculating the rigid-body angle between the centers of mass of the distinct domains. Instead of using arbitrary sequence cutoffs to find the hinge, locate the inter domain linkers using **Topological Prominence** same as Persistence (via signal processing on the inverted smoothed arity array). By enforcing a prominence threshold of $2.0$, this continuous 1D minimum perfectly mirrors the discrete Persistent Local Maxima ($T_{\nu} = 2.0$) from Phase 2, isolating the physical hinge coordinate $H$ to compute the macroscopic fold angle $\theta$. Then flagged hallucinations are validated by calculating the rigid body angle between the centers of mass of the distinct domains in the AF2 model, benchmarking it directly against the ground truth angle derived from the experimental PDB coordinates in Phase 4. The macroscopic fold angle $\theta$ is computed via the dot product of domain vectors originating from a shared hinge point $H$:
-
-$$\theta = \arccos \left( \frac{\vec{v}_A \cdot \vec{v}_B}{|\vec{v}_A| |\vec{v}_B|} \right)$$
-
+- `data_acquisition.py` and `phase1.py` need internet access (UniProt, AlphaFold DB, RCSB PDB). `data_acquisition.py` can be stopped and restarted: pairs already listed in `Data/target_proteins.txt` are skipped. The number of pairs to collect is set by `TARGET_PAIRS_NEEDED` (default 20,000); fewer pass the alignment filter in Phase 1.
+- **Disk usage.** Phase 1 writes 192 small `.npy` files per protein (6 radii × 8 gaps × weighted/unweighted × AF2/PDB) and Phase 2 a further 1,152 (× 6 windows). For about 8,000 proteins this is more than 10 million files. Phase 4 only uses r ∈ {10, 15} and k ∈ {0, 1, 2, 5}; to save space and time you can trim `R_VALUES` and `K_VALUES` in `phase1.py` to those values.
+- Re-running `phase1.py` rebuilds `Data/mapping_log.csv` from scratch.
+- Every column of every output CSV is described in [`csv_columns.md`](csv_columns.md).
 
 ---
 
-## Phase 4: Statistical Benchmarking & Structural Ablation
+## Method
 
-**The goal is to statistically validate AlphaFold's topological deviations from experimental reality and prove the efficacy of the pipeline's novel parameters.**
+### Phase 1 — Data acquisition, parsing and synchronisation
 
-- **Geometric K-Means Clustering:** Deploy unsupervised K-Means clustering ($K=2$) strictly on the geometric Arity Signatures ($p_{25}, p_{75}$) of the dataset. This mathematically partitions the protein universe into Intrinsically Disordered Proteins (IDPs) and Rigid Globular domains based purely on packing density.
-- **Statistical Benchmarking (Distance Metrics):** Apply independent non-parametric tests (Mann-Whitney U test) to the 1D EMD and DTW error distributions to compare alignment accuracy across the distinct structural classifications. This statistically determines if AlphaFold's predictive error is systematically higher in intrinsically disordered regions compared to rigid domains.
-- **Statistical Benchmarking (Paired Topological Metrics):** Group the Filtration metrics (Persistence Entropy, Mean Persistence, Persistent Local Maxima) into paired sets (AF2 vs. PDB). Apply non-parametric paired tests (Wilcoxon signed-rank), pairing every $p$-value with an Effect Size metric (Cliff’s Delta) to systematically quantify where AlphaFold's internal topological wiring deviates from experimental ground truth.
-- **Quaternary Hallucination Analysis:** Isolate the subset of proteins flagged as hallucinations in Phase 3. Statistically analyze the distribution of their macroscopic rigid-body angle deviations ($\theta$) to quantify the severity of AlphaFold's quaternary misalignments.
-- **Methodological Ablation Study:** Systematically test whether the addition of multiscale long-range arity yields statistically superior structural classification compared to standard local arity. Using a paired Wilcoxon signed-rank test on the DTW alignment errors, compare predictions processed with standard arity ($k=0$) against those processed with long-range isolating gaps ($k>0$) to quantify the magnitude of information gain.
+**Target selection (`data_acquisition.py`).** UniProt is queried for reviewed human entries (Swiss-Prot, taxonomy 9606) with at least one PDB cross-reference. For each entry the first PDB ID in the cross-reference list is used. The AF2 model is downloaded through the AlphaFold DB API and the PDB entry in legacy `.pdb` format from RCSB. A pair is kept only if both downloads succeed, so entries that are distributed only as mmCIF (very large structures) drop out.
+
+**Parsing (`phase1.py`).** Cα coordinates are read from the first model of each file, keeping standard residues and the modified residues MSE, CSO, SEC and PYL. For AF2 the B-factor column (pLDDT) is kept as well. The AF2 model has a single chain; for the PDB entry every chain is parsed.
+
+**Sequence synchronisation.** The AF2 sequence is aligned to each PDB chain with Smith–Waterman local alignment (BLOSUM62, gap open −10, gap extend −1) and the best-scoring chain is kept. The pair is rejected if the aligned residues cover less than 40% of that PDB chain. PDB Cα coordinates are then placed into AF2 residue numbering; AF2 positions with no aligned, resolved PDB residue are set to NaN.
+
+**Arity.** For residue i with Cα–Cα distances d<sub>ij</sub>, the unweighted arity at radius r and sequence gap k is the number of neighbours
+
+```math
+a_i(r,k) = \left|\left\{\, j \;:\; d_{ij} \le r,\ |i-j| > k \,\right\}\right|
+```
+
+and the weighted arity applies a Gaussian distance-decay kernel to the same neighbours:
+
+```math
+a^{w}_i(r,k) = \sum_{j \,:\, d_{ij} \le r,\ |i-j| > k} \exp\!\left(-\left(\frac{d_{ij}}{r}\right)^{2}\right)
+```
+
+k = 0 excludes only the residue itself and gives the standard arity of Cazals & Sarti; k > 0 also discards neighbours within k positions in sequence. Arities are computed for r ∈ {5, 8, 10, 12, 15, 20} Å and k ∈ {0, 1, 2, 3, 4, 5, 7, 10}, for the AF2 model and for the synchronised PDB chain. In the PDB chain only resolved residues count as neighbours, and unresolved positions stay NaN. Each profile is saved as a 1D array in AF2 numbering, one file per (r, k), weighting and model.
+
+The AF2 PAE matrix is downloaded from the AlphaFold DB and stored together with the Cα coordinates and pLDDT for Phase 3. The matched PDB chain of every protein is recorded in `Data/mapping_log.csv`.
+
+### Phase 2 — Smoothing, arity signatures and persistence (`phase2.py`, `map_generation.py`)
+
+Every Phase 1 profile (all (r, k), weighted and unweighted, AF2 and PDB) is processed at window sizes W ∈ {1, 5, 11, 15, 25, 31}.
+
+**Smoothing.** A centred moving average of width W; W = 1 is the raw profile. The mean is taken over the resolved residues inside the window, and positions that are unresolved in the PDB structure stay NaN. The window sizes roughly follow structural scales: W = 5 for secondary structure (helices, strands), W = 11–15 for super-secondary motifs and W = 25–31 for domains.
+
+**Arity signature.** The 10th, 25th, 50th, 75th and 90th percentiles of the (smoothed) profile, computed with `numpy.nanpercentile` (linear interpolation, NaNs ignored). Cazals & Sarti define the signature as the inverse CDF, i.e. the smallest arity whose cumulative frequency reaches the percentile; `np.nanpercentile(..., method="inverted_cdf")` reproduces that definition exactly.
+
+**Persistence (arity filtration).** Residues are added in increasing order of arity (a sublevel-set filtration of the 1D profile) and union–find tracks stretches of consecutive residues. When two stretches meet, the younger one (the one born at the higher arity) dies; its persistence is the arity at the merge minus its birth arity. NaN positions are removed first. The metrics are:
+
+- **Persistence entropy H<sub>p</sub>:** Shannon entropy of the normalised persistences, divided by log m, where m is the number of merges with positive persistence (range 0–1);
+- **Mean persistence;**
+- **Fraction of positive critical points:** m divided by the number of residues;
+- **Maximum number of connected components** reached during the filtration;
+- **Persistent Local Maxima (PLM):** number of persistences greater than T<sub>ν</sub> = 2.0.
+
+Results are written to one CSV per (r, k), weighting and W, and the smoothed profiles are saved for Phase 3.
+
+**Global arity maps (`map_generation.py`).** For every signatures file, the 2D map plots p<sub>25</sub> against p<sub>75</sub> as density histograms for the PDB and AF2 and as a scatter overlay; the 3D map adds p<sub>50</sub> and colours points by local density. Densely packed proteins lie towards the upper right of the maps and sparsely packed or disordered proteins towards the lower left.
+
+### Phase 3 — Profile alignment and inter-domain orientation (`phase3.py`)
+
+Phase 3 uses the **unweighted** smoothed profiles for every (r, k) and W. For each protein the AF2 and PDB profiles are restricted to the positions resolved in both; unresolved stretches are removed from both profiles before comparison.
+
+**EMD.** The 1D Earth Mover's (Wasserstein-1) distance between the AF2 and PDB arity value distributions (`scipy.stats.wasserstein_distance`):
+
+```math
+\mathrm{EMD} = \int_{0}^{\infty} \left| F_{\mathrm{PDB}}(x) - F_{\mathrm{AF2}}(x) \right| \, dx
+```
+
+**pLDDT-weighted DTW.** Dynamic Time Warping between the two profiles with local cost
+
+```math
+C(i,j) = \frac{\mathrm{pLDDT}_{\mathrm{AF2},\,j}}{100}\,\left(a_{\mathrm{PDB},\,i} - a_{\mathrm{AF2},\,j}\right)^{2}
+```
+
+so that deviations where AF2 is confident cost more and low-confidence regions are down-weighted. The accumulated cost along the optimal warping path is divided by the number of residues compared.
+
+**Inter-domain orientation flag.** The long-range PAE is the mean AF2 PAE over all residue pairs more than 50 positions apart in sequence. A protein is flagged (column `Hallucination_Flag`) when its arity profile agrees well with the experiment and AF2 is confident locally, but AF2 reports high error for the relative placement of distant regions:
+
+- DTW error ≤ 1.0, **and**
+- mean long-range PAE > 15 Å, **and**
+- mean pLDDT over the compared residues ≥ 70.
+
+**Hinge angle.** For flagged proteins, a hinge is located separately in the AF2 and PDB profiles as the most prominent minimum of the smoothed profile (`scipy.signal.find_peaks` on the inverted profile, prominence ≥ 2.0, the same value as the PLM threshold in Phase 2). Proteins with fewer than 50 compared residues or without such a minimum get no angle. With hinge Cα H and vectors **v**<sub>A</sub>, **v**<sub>B</sub> from H to the centroids of the Cα atoms before and after it,
+
+```math
+\theta = \arccos\left(\frac{\vec{v}_A \cdot \vec{v}_B}{\lVert\vec{v}_A\rVert\,\lVert\vec{v}_B\rVert}\right)
+```
+
+The output contains θ for AF2 and for the PDB and the absolute deviation between them.
+
+### Phase 4 — Statistics, sweeps and ablation (`phase4.py`)
+
+Phase 4 merges the Phase 2 signatures and Phase 3 results (unweighted) for each (r, k, W) and computes per protein the signature distances
+
+```math
+D^{2D}_{\mathrm{sig}} = \sqrt{\left(p^{\mathrm{PDB}}_{25} - p^{\mathrm{AF2}}_{25}\right)^{2} + \left(p^{\mathrm{PDB}}_{75} - p^{\mathrm{AF2}}_{75}\right)^{2}}
+```
+
+and D<sub>sig</sub><sup>3D</sup>, which adds the p<sub>50</sub> term.
+
+- **Reference packing modes.** Ward agglomerative clustering into 4 clusters of the PDB signatures (p<sub>25</sub>, p<sub>75</sub>) at r = 10, k = 0, W = 1. Clusters are ordered by mean packing, from Mode 0 (lowest) to Mode 3 (highest); the report labels them IDPs, molten globules, dynamic globulars and rigid globulars. These assignments are held fixed for every configuration.
+- **Per-configuration statistics.** For each (r, k, W): mean D<sub>sig</sub>; median DTW and EMD per mode; for ten metrics (the five percentiles and the five persistence metrics) a two-sided Wilcoxon signed-rank test of AF2 against the PDB, with Cliff's delta as effect size; and the number of flagged proteins with their mean and maximum hinge-angle deviation.
+- **Sweeps and grid search.** One-at-a-time sweeps over W (r = 10, k = 0), k ∈ {0, 1, 2, 5} (r = 10, W = 1) and r ∈ {10, 15} (k = 0, W = 1), then a full grid over r ∈ {10, 15}, k ∈ {0, 1, 2, 5} and W ∈ {1, 5, 11, 15, 25, 31}. The configuration with the lowest mean D<sub>sig</sub><sup>2D</sup> is printed.
+- **Ablation of k.** At r = 10 and W ∈ {1, 5, 15, 25}, k = 0 is compared with k ∈ {1, 2, 5} by paired Wilcoxon tests and Cliff's delta on DTW, EMD and both D<sub>sig</sub> (printed to the console).
+- **Confusion matrices.** At r = 10, for each k ∈ {0, 1, 2, 5} and each W, the PDB and AF2 signatures are clustered independently (Ward, 4 clusters, ordered by packing) and cross-tabulated; agreement is the fraction of proteins on the diagonal.
+
+---
+
+## Known limitations
+
+- **AF2 and PDB profiles cover different residues in Phase 2.** AF2 profiles span the full UniProt sequence, whereas PDB profiles contain only the aligned, resolved residues (the 40% coverage filter is relative to the PDB chain, so short constructs of long proteins pass). The Phase 2 signatures and persistence metrics, and therefore D<sub>sig</sub> and the paired tests in Phase 4, compare the full AF2 chain with the resolved part of the experimental chain. Count-based metrics (`Max_CC`, `PLM`) grow with chain length. AF2 arities also count neighbours that are missing from the PDB chain, and in the persistence step removing NaN positions joins the resolved segments on either side of a gap. Phase 3 (EMD, DTW) restricts both profiles to shared positions, but its AF2 arities are still computed with all AF2 neighbours.
+- **Arity scale depends on r and k.** Larger k and smaller r give smaller arity values and therefore smaller absolute DTW, EMD and D<sub>sig</sub>. Comparisons of these errors across configurations (sweeps, ablation, choosing the configuration with the lowest D<sub>sig</sub>) and the fixed DTW threshold of 1.0 are affected by this. Normalising by the arity scale of each configuration would separate scale from agreement.
+- **Independent hinges.** The hinge is located separately in the AF2 and PDB profiles, so the two angles can be measured around different residues.
+- **PDB entry selection.** The first PDB ID listed in each UniProt entry is used, rather than the structure with the best coverage or resolution.
+- **Multiple testing.** p-values are reported without correction across metrics and configurations. With thousands of proteins almost every test is significant, so Cliff's delta is the more informative number.
+- **Terminology.** The output column is named `Hallucination_Flag`, but the flag marks proteins whose AF2 model itself reports a high PAE between distant regions, i.e. cases where AF2 signals its own uncertainty about inter-domain placement.
+
+## Data sources and references
+
+Structures and PAE files are downloaded at run time and are not redistributed in this repository; they remain subject to the terms of their providers.
+
+- Cazals, F., & Sarti, E. (2024). AlphaFold predictions on whole genomes at a glance: a coherent view on packing properties, pLDDT values, and disordered regions. *bioRxiv*. https://doi.org/10.1101/2024.11.16.623929
+- Jumper, J., Evans, R., Pritzel, A., et al. (2021). Highly accurate protein structure prediction with AlphaFold. *Nature*, 596, 583–589. https://doi.org/10.1038/s41586-021-03819-2
+- Varadi, M., Bertoni, D., Magana, P., et al. (2024). AlphaFold Protein Structure Database in 2024: providing structure coverage for over 214 million protein sequences. *Nucleic Acids Research*, 52(D1), D368–D375. https://doi.org/10.1093/nar/gkad1011
+- Worldwide Protein Data Bank (wwPDB) — https://www.wwpdb.org; structures downloaded from RCSB PDB — https://www.rcsb.org
+- UniProt — https://www.uniprot.org
+
+## License
+
+The code is released under the MIT License; see [`LICENSE`](LICENSE).

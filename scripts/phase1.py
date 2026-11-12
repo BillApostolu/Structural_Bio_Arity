@@ -10,9 +10,13 @@ from Bio.PDB.Polypeptide import protein_letters_3to1
 RAW_DATA_DIR = os.path.join("Data", "raw")
 AF2_DIR = os.path.join(RAW_DATA_DIR, "AlphaFold2")
 PDB_DIR = os.path.join(RAW_DATA_DIR, "PDB")
-PAE_DIR = os.path.join(RAW_DATA_DIR, "PAE_JSON") # NEW: PAE Directory
+PAE_DIR = os.path.join(RAW_DATA_DIR, "PAE_JSON") # temporary folder for downloaded PAE JSONs
 TARGET_LIST_FILE = os.path.join("Data", "target_proteins.txt")
 PROCESSED_BASE_DIR = os.path.join("Data", "processed_1d_signals_new")
+MAPPING_LOG_FILE = os.path.join("Data", "mapping_log.csv")
+# the PAE folder is not created by data_acquisition.py, so create it here,
+# otherwise writing the first PAE JSON fails and every protein is skipped
+os.makedirs(PAE_DIR, exist_ok=True)
 
 R_VALUES = [5, 8, 10, 12, 15, 20]
 K_VALUES = [0, 1, 2, 3, 4, 5, 7, 10]  
@@ -158,8 +162,13 @@ def compute_1d_arities(coordis, r_values, k_values):
     return results
 
 # execute
-targets = pd.read_csv(TARGET_LIST_FILE, sep="\t") 
+# drop repeated pairs (older versions of data_acquisition.py could append duplicates when resumed)
+targets = pd.read_csv(TARGET_LIST_FILE, sep="\t").drop_duplicates(subset="UniProt_ID")
 successfully_processed = 0
+
+# start a fresh mapping log on every run so that re-running Phase 1 does not duplicate rows
+with open(MAPPING_LOG_FILE, "w") as log:
+    log.write("UniProt_ID,PDB_ID,Matched_Chain\n")
 
 for index, row in targets.iterrows():
     uniprot_id = row['UniProt_ID']
@@ -195,7 +204,7 @@ for index, row in targets.iterrows():
         core_dir = os.path.join(PROCESSED_BASE_DIR, "core_structural_data")
         os.makedirs(core_dir, exist_ok=True)
         
-        # PAE cashing and parsing
+        # PAE caching and parsing
         pae_npy_path = os.path.join(core_dir, f"{uniprot_id}_AF2_PAE.npy")
         
         # download if not already processed into a numpy array
@@ -235,14 +244,9 @@ for index, row in targets.iterrows():
             
         successfully_processed += 1
         
-        # record of which chain was the true match for Phase 3 use
-        log_file = os.path.join("Data", "mapping_log.csv")
-        file_exists = os.path.exists(log_file)
-        
-        with open(log_file, "a") as log:
-            if not file_exists or os.path.getsize(log_file) == 0:
-                log.write("UniProt_ID,PDB_ID,Matched_Chain\n")
-            log.write(f"{uniprot_id},{pdb_id},{matched_chain}\n")         
+        # record of which chain was the true match
+        with open(MAPPING_LOG_FILE, "a") as log:
+            log.write(f"{uniprot_id},{pdb_id},{matched_chain}\n")
         print()# next line  
     except Exception as e:
         print(f"\nFailed: {e}")

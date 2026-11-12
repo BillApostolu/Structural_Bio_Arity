@@ -1,19 +1,17 @@
-# Phase 1: Coordinate Parsing
-biopython
-MDAnalysis
+# Python >= 3.10
 
-# Phase 2 & 3: Math, Geometry, and Optimal Transport
+# Downloads from UniProt, AlphaFold DB and RCSB PDB (data_acquisition.py, phase1.py)
+requests
+
+# Structure parsing and sequence alignment (phase1.py)
+biopython>=1.80
+
+# Numerics, statistics and clustering
 numpy
 pandas
 scipy
-POT  # Python Optimal Transport (for Earth Mover's Distance)
-numba # For optimizing Dynamic Time Warping
-fastdtw # Alternative for DTW
+scikit-learn  # agglomerative clustering and confusion matrices (phase4.py)
+numba         # JIT-compiled DTW (phase3.py)
 
-# Phase 4: Statistics
-scikit-posthocs # For Nemenyi Post-Hoc tests
-
-# Visualization
+# Plots (map_generation.py)
 matplotlib
-seaborn
-jupyter

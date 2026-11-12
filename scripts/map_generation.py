@@ -7,6 +7,7 @@ PHASE2_OUT_DIR = os.path.join("Data", "phase2_results")
 MAPS_OUT_DIR = os.path.join(PHASE2_OUT_DIR, "maps")
 
 def generate_maps():
+    os.makedirs(MAPS_OUT_DIR, exist_ok=True) # the maps folder is not created by phase2.py
     csv_files = glob.glob(os.path.join(PHASE2_OUT_DIR, "Signatures_*.csv"))
 
     for file in csv_files:
@@ -21,11 +22,18 @@ def generate_maps():
 
         df_af2 = df[df['Model_Type'] == 'AF2'].dropna(subset=['p_25','p_50','p_75'])
         df_pdb = df[df['Model_Type'] == 'PDB'].dropna(subset=['p_25','p_50','p_75'])
+        if df_af2.empty or df_pdb.empty:
+            print(f"Skipping {filename}: no complete AF2 or PDB signatures")
+            continue
 
         fig, axes = plt.subplots(1, 3, figsize=(18, 5), sharex=True, sharey=True)
         GLOBAL_BINS = 30
-        GLOBAL_RANGE = [[0, 30], [0, 30]] 
-        
+        # axis range: at least 0-30 as before, but extended when arities are larger (e.g. r >= 15)
+        # so that no proteins are silently cut off the maps
+        max_arity = max(df_pdb['p_75'].max(), df_af2['p_75'].max())
+        AXIS_MAX = max(30, int(np.ceil(max_arity)) + 1)
+        GLOBAL_RANGE = [[0, AXIS_MAX], [0, AXIS_MAX]]
+
         # PDB Density Red
         h_pdb = axes[0].hist2d(df_pdb['p_25'], df_pdb['p_75'], bins=GLOBAL_BINS, range=GLOBAL_RANGE, cmap='Reds', cmin=1)
         fig.colorbar(h_pdb[3], ax=axes[0], label="Number of Proteins")
@@ -33,20 +41,20 @@ def generate_maps():
         axes[0].set_xlabel("25th Percentile")
         axes[0].set_ylabel("75th Percentile")
         axes[0].grid(True, linestyle='--', alpha=0.3)
-        axes[0].set_xlim(0, 30)
-        axes[0].set_ylim(0, 30)
-        axes[0].plot([0, 30], [0, 30], 'k--', alpha=0.5)
-        
+        axes[0].set_xlim(0, AXIS_MAX)
+        axes[0].set_ylim(0, AXIS_MAX)
+        axes[0].plot([0, AXIS_MAX], [0, AXIS_MAX], 'k--', alpha=0.5)
+
         # AF2 Density Blue
         h_af2 = axes[1].hist2d(df_af2['p_25'], df_af2['p_75'], bins=GLOBAL_BINS, range=GLOBAL_RANGE, cmap='Blues', cmin=1)
         fig.colorbar(h_af2[3], ax=axes[1], label="Number of Proteins")
         axes[1].set_title(f"AlphaFold 2 (W={w_val})")
         axes[1].set_xlabel("25th Percentile")
         axes[1].grid(True, linestyle='--', alpha=0.3)
-        axes[1].set_xlim(0, 30)
-        axes[1].set_ylim(0, 30)
-        axes[1].plot([0, 30], [0, 30], 'k--', alpha=0.5) 
-        
+        axes[1].set_xlim(0, AXIS_MAX)
+        axes[1].set_ylim(0, AXIS_MAX)
+        axes[1].plot([0, AXIS_MAX], [0, AXIS_MAX], 'k--', alpha=0.5)
+
         # Scatter
         axes[2].scatter(df_pdb['p_25'], df_pdb['p_75'], c='red', alpha=0.3, s=15, label='PDB', edgecolors='none')
         axes[2].scatter(df_af2['p_25'], df_af2['p_75'], c='blue', alpha=0.3, s=15, label='AF2', edgecolors='none')
@@ -54,9 +62,9 @@ def generate_maps():
         axes[2].set_xlabel("25th Percentile")
         axes[2].legend()
         axes[2].grid(True, linestyle='--', alpha=0.3)
-        axes[2].set_xlim(0, 30)
-        axes[2].set_ylim(0, 30)
-        axes[2].plot([0, 30], [0, 30], 'k--', alpha=0.5)
+        axes[2].set_xlim(0, AXIS_MAX)
+        axes[2].set_ylim(0, AXIS_MAX)
+        axes[2].plot([0, AXIS_MAX], [0, AXIS_MAX], 'k--', alpha=0.5)
         
         plt.suptitle(f"2D Global Arity Maps | {param_info}", fontsize=14)
         plt.tight_layout()

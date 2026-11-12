@@ -23,20 +23,29 @@ def calculate_arity_signature(arr):
     return {f"p_{p}": val for p, val in zip(PERCENTILES, vals)}
 
 def smooth_1d_signal(arr, window_size):
-    """Applies the Sliding Window filter"""
+    """Applies the Sliding Window filter.
+    The average is taken over the resolved residues inside each window, and residues that are NaN
+    in the input (unresolved in the PDB structure) stay NaN, so smoothing never fills gaps with invented values."""
     # returns the raw arity series when W = 1
     if window_size < 2:
         return arr
     series = pd.Series(arr) #convert the raw 1D numpy array into a pandas Series
-    
+
     # .rolling(window=window_size): creates the sliding frame.
     # center=True: ensures the calculated average is placed exactly at the center index of the window,
     # as this keeps the smoothed domains aligned with the actual sequence of the protein.
-    # min_periods=1: this forces it to calculate an average as long as there is at least 1 valid atom in the window.
+    # min_periods=1: averages over however many valid residues the window contains (NaNs are skipped),
+    # so residues next to a gap or at the chain ends still get a value.
     smoothed = series.rolling(window=window_size, center=True, min_periods=1).mean()
-    
+
     # Convert back to a fast NumPy array for the rest of the pipeline
-    return smoothed.to_numpy()
+    # (copy=True gives a writable array; pandas >= 3 can otherwise return a read-only view)
+    smoothed = smoothed.to_numpy(dtype=float, copy=True)
+
+    # min_periods=1 also gives a value to NaN positions within W//2 of a resolved residue,
+    # which would extend the PDB profile into unresolved regions, so put the original gaps back
+    smoothed[np.isnan(arr)] = np.nan
+    return smoothed
 
 def compute_arity_filtration(arr):
     # strip out all missing data because persistent homology requires a continuous sequence
@@ -149,7 +158,7 @@ for folder in param_folders:
             
             for file in files:
                 filename = os.path.basename(file)
-                protein_id, model_type = filename.replace('.npy', '').split('_')
+                protein_id, model_type = filename.replace('.npy', '').rsplit('_', 1)
                 
                 arr = np.load(file)
                 
